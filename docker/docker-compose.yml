@@ -1,0 +1,56 @@
+name: spark-fraud-lakehouse
+
+x-build: &build
+  context: ..
+  dockerfile: docker/Dockerfile
+  args:
+    HOST_UID: ${HOST_UID:-1000}
+    HOST_GID: ${HOST_GID:-1000}
+
+x-env: &env
+  PROJECT_ROOT: /workspace
+  PYTHONPATH: /workspace
+  SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY:-4g}
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+
+services:
+  lab:
+    build: *build
+    image: spark-fraud-lab:latest
+    container_name: fraud-lab
+    working_dir: /workspace
+    environment: *env
+    volumes:
+      - ..:/workspace:z
+    ports:
+      - "127.0.0.1:8888:8888"   # JupyterLab
+      - "127.0.0.1:4040:4040"   # Spark UI (pendant l'exécution d'un job)
+    command: ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser",
+              "--ServerApp.token=", "--ServerApp.password=", "--notebook-dir=/workspace"]
+
+  mlflow:
+    build: *build
+    image: spark-fraud-lab:latest
+    container_name: fraud-mlflow
+    working_dir: /workspace
+    environment: *env
+    volumes:
+      - ..:/workspace:z
+    ports:
+      - "127.0.0.1:5000:5000"
+    command: ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000",
+              "--backend-store-uri", "sqlite:////workspace/mlflow/mlflow.db",
+              "--default-artifact-root", "/workspace/mlflow/artifacts"]
+
+  dashboard:
+    build: *build
+    image: spark-fraud-lab:latest
+    container_name: fraud-dashboard
+    working_dir: /workspace
+    environment: *env
+    volumes:
+      - ..:/workspace:z
+    ports:
+      - "127.0.0.1:8501:8501"
+    profiles: ["dashboard"]
+    command: ["streamlit", "run", "src/dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
